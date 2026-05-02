@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Split Tracker</title>
+  <meta name="theme-color" content="#111111">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Split">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    *, *::before, *::after {
+      margin: 0; padding: 0; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    :root {
+      --bg:       #111111;
+      --surface:  #1c1c1e;
+      --surface2: #2c2c2e;
+      --accent:   #30d158;
+      --red:      #ff453a;
+      --text:     #ffffff;
+      --text2:    #8e8e93;
+      --border:   #38383a;
+      --sb: env(safe-area-inset-bottom, 0px);
+      --st: env(safe-area-inset-top,    0px);
+    }
+    html { height: -webkit-fill-available; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      overflow-x: hidden;
+    }
+
+    /* ── Screens ── */
+    .screen { display: none; min-height: 100vh; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    /* ── Header ── */
+    .header {
+      padding: 12px 20px 12px;
+      padding-top: calc(12px + var(--st));
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg);
+      position: sticky; top: 0; z-index: 10;
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 { font-size: 20px; font-weight: 700; flex: 1; }
+    .back-btn {
+      width: 36px; height: 36px; border: none;
+      background: var(--surface2); border-radius: 50%;
+      color: var(--text); font-size: 22px; line-height: 1;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .back-btn:active { opacity: .7; }
+
+    /* ── Home ── */
+    #home {
+      justify-content: center; align-items: center;
+      padding: 40px 28px;
+      padding-top: calc(40px + var(--st));
+    }
+    .home-emoji { font-size: 52px; margin-bottom: 18px; }
+    .home-title { font-size: 30px; font-weight: 800; text-align: center; margin-bottom: 8px; }
+    .home-sub   { color: var(--text2); font-size: 16px; text-align: center; margin-bottom: 56px; }
+    .home-btns  { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 340px; }
+
+    .btn-big {
+      height: 66px; border: none; border-radius: 18px;
+      font-size: 18px; font-weight: 700; cursor: pointer; width: 100%;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn-big:active { opacity: .8; transform: scale(.98); }
+    .btn-big.green  { background: var(--accent); color: #000; }
+    .btn-big.grey   { background: var(--surface2); color: var(--text); }
+
+    /* ── Add Expense ── */
+    .form-body {
+      flex: 1; padding: 24px 20px;
+      padding-bottom: calc(100px + var(--sb));
+      overflow-y: auto;
+    }
+    .form-group  { margin-bottom: 28px; }
+    .form-label  {
+      display: block; font-size: 12px; font-weight: 700;
+      color: var(--text2); text-transform: uppercase; letter-spacing: .6px;
+      margin-bottom: 10px;
+    }
+    .form-input {
+      width: 100%; height: 56px;
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 14px; color: var(--text); font-size: 17px;
+      padding: 0 16px; outline: none;
+      -webkit-appearance: none; appearance: none;
+    }
+    .form-input:focus { border-color: var(--accent); }
+
+    .amount-row  { display: flex; gap: 10px; align-items: stretch; }
+    .sign-toggle {
+      width: 56px; height: 56px; flex-shrink: 0;
+      border: 1.5px solid var(--border); border-radius: 14px;
+      font-size: 26px; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s;
+    }
+    .sign-toggle.pos { background: var(--accent); border-color: var(--accent); color: #000; }
+    .sign-toggle.neg { background: var(--red);    border-color: var(--red);    color: #fff; }
+    .sign-toggle:active { opacity: .8; }
+
+    .input-wrap    { flex: 1; position: relative; }
+    .input-prefix  {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      color: var(--text2); font-size: 17px; pointer-events: none;
+    }
+    .input-wrap .form-input { padding-left: 30px; }
+
+    .save-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 14px 20px; padding-bottom: calc(14px + var(--sb));
+      background: var(--bg); border-top: 1px solid var(--border);
+    }
+    .save-btn {
+      height: 56px; width: 100%; border: none; border-radius: 16px;
+      font-size: 18px; font-weight: 700; cursor: pointer;
+      background: var(--accent); color: #000;
+      transition: opacity .15s;
+    }
+    .save-btn:active   { opacity: .8; }
+    .save-btn:disabled { opacity: .4; cursor: default; }
+
+    /* ── History ── */
+    .history-body {
+      flex: 1; padding: 16px 20px;
+      padding-bottom: calc(90px + var(--sb));
+      overflow-y: auto;
+    }
+
+    .month-block   { margin-bottom: 28px; }
+    .month-label   {
+      font-size: 12px; font-weight: 800; color: var(--text2);
+      text-transform: uppercase; letter-spacing: .8px;
+      margin-bottom: 10px; padding: 0 2px;
+    }
+    .carryover-row {
+      background: var(--surface2); border-radius: 12px;
+      padding: 13px 16px; margin-bottom: 6px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-left: 3px solid var(--text2);
+    }
+    .carryover-lbl { font-size: 14px; color: var(--text2); }
+    .carryover-amt { font-size: 14px; font-weight: 700; color: var(--text2); }
+
+    .exp-row {
+      background: var(--surface); border-radius: 12px;
+      padding: 14px 16px; margin-bottom: 6px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .exp-name  { font-size: 16px; font-weight: 500; flex: 1; }
+    .exp-right { text-align: right; flex-shrink: 0; }
+    .exp-full  { font-size: 13px; color: var(--text2); margin-bottom: 2px; }
+    .exp-share { font-size: 16px; font-weight: 700; }
+    .exp-share.pos { color: var(--accent); }
+    .exp-share.neg { color: var(--red); }
+    .del-btn {
+      flex-shrink: 0; width: 36px; height: 36px; border: none;
+      background: transparent; color: var(--red);
+      font-size: 18px; cursor: pointer; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      opacity: .55; transition: opacity .15s, background .15s;
+    }
+    .del-btn:active { opacity: 1; background: rgba(255,69,58,.15); }
+
+    /* ── Footer ── */
+    .sticky-foot {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 14px 24px; padding-bottom: calc(14px + var(--sb));
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .foot-title { font-size: 15px; font-weight: 600; }
+    .foot-total { font-size: 24px; font-weight: 800; }
+    .foot-total.pos { color: var(--accent); }
+    .foot-total.neg { color: var(--red); }
+
+    /* ── Utilities ── */
+    .loading {
+      display: flex; justify-content: center; align-items: center;
+      padding: 60px 20px; color: var(--text2); font-size: 16px;
+    }
+    .empty {
+      text-align: center; padding: 80px 20px;
+      color: var(--text2); font-size: 16px;
+    }
+    .empty .empty-icon { font-size: 48px; margin-bottom: 16px; }
+
+    .toast {
+      position: fixed; top: calc(20px + var(--st)); left: 50%;
+      transform: translateX(-50%) translateY(calc(-100% - 20px));
+      background: var(--surface2); color: var(--text);
+      padding: 12px 22px; border-radius: 28px; font-size: 15px; font-weight: 500;
+      z-index: 999; transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+      white-space: nowrap; max-width: calc(100vw - 40px);
+      border: 1px solid var(--border);
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- ── Home ── -->
+<div class="screen active" id="home">
+  <div class="home-emoji">💸</div>
+  <h1 class="home-title">Split Tracker</h1>
+  <p class="home-sub">Track shared expenses</p>
+  <div class="home-btns">
+    <button class="btn-big green" id="btn-add">+ Add Expense</button>
+    <button class="btn-big grey"  id="btn-history">View History</button>
+  </div>
+</div>
+
+<!-- ── Add Expense ── -->
+<div class="screen" id="add-expense">
+  <div class="header">
+    <button class="back-btn" id="back-add">‹</button>
+    <h1>Add Expense</h1>
+  </div>
+  <div class="form-body">
+    <div class="form-group">
+      <label class="form-label" for="f-name">Expense Name</label>
+      <input type="text" id="f-name" class="form-input"
+             placeholder="e.g. Groceries, Rent…"
+             autocomplete="off" autocorrect="off" autocapitalize="words">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Full Amount Paid (CAD)</label>
+      <div class="amount-row">
+        <button class="sign-toggle pos" id="sign-btn" type="button">+</button>
+        <div class="input-wrap">
+          <span class="input-prefix">$</span>
+          <input type="number" id="f-amount" class="form-input"
+                 placeholder="0.00" inputmode="decimal" step="0.01" min="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Your Share (CAD)</label>
+      <div class="input-wrap">
+        <span class="input-prefix">$</span>
+        <input type="number" id="f-share" class="form-input"
+               placeholder="0.00" inputmode="decimal" step="0.01">
+      </div>
+    </div>
+  </div>
+  <div class="save-bar">
+    <button class="save-btn" id="save-btn">Save Expense</button>
+  </div>
+</div>
+
+<!-- ── History ── -->
+<div class="screen" id="history">
+  <div class="header">
+    <button class="back-btn" id="back-hist">‹</button>
+    <h1>History</h1>
+  </div>
+  <div class="history-body" id="hist-body">
+    <div class="loading">Loading…</div>
+  </div>
+  <div class="sticky-foot">
+    <div class="foot-title">Running Balance</div>
+    <div class="foot-total" id="foot-total">—</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+// ── Supabase ──────────────────────────────────────────────────────────────────
+const SUPA_URL = 'https://uqxjszmgqzwrbnuarxud.supabase.co';
+const SUPA_KEY = 'sb_publishable_ZVagERg8Dwlur1nG95PGJQ_Fxdn1ZWD';
+let db = null;
+try {
+  db = supabase.createClient(SUPA_URL, SUPA_KEY);
+} catch (e) {
+  console.warn('Supabase unavailable — navigation still works', e);
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let signNeg     = false;
+let shareEdited = false;
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function nav(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (id === 'add-expense') resetForm();
+  if (id === 'history')     loadHistory();
+}
+
+// ── Form ──────────────────────────────────────────────────────────────────────
+function resetForm() {
+  document.getElementById('f-name').value   = '';
+  document.getElementById('f-amount').value = '';
+  document.getElementById('f-share').value  = '';
+  signNeg = false;
+  shareEdited = false;
+  renderSign();
+}
+
+function toggleSign() {
+  signNeg = !signNeg;
+  renderSign();
+  syncShare();
+}
+
+function renderSign() {
+  const btn = document.getElementById('sign-btn');
+  if (signNeg) { btn.textContent = '−'; btn.className = 'sign-toggle neg'; }
+  else         { btn.textContent = '+'; btn.className = 'sign-toggle pos'; }
+}
+
+function syncShare() {
+  if (shareEdited) return;
+  const raw = parseFloat(document.getElementById('f-amount').value);
+  if (!raw) { document.getElementById('f-share').value = ''; return; }
+  const amount = signNeg ? -raw : raw;
+  document.getElementById('f-share').value = (amount / 2).toFixed(2);
+}
+
+async function saveExpense() {
+  const label = document.getElementById('f-name').value.trim();
+  const raw   = parseFloat(document.getElementById('f-amount').value) || 0;
+  const share = parseFloat(document.getElementById('f-share').value) || 0;
+
+  if (!label)                  { toast('Please enter an expense name'); return; }
+  if (raw === 0 && share === 0) { toast('Please enter an amount or share'); return; }
+
+  const amount = signNeg ? -raw : raw;
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const now   = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  try {
+    const { error } = await db.from('expenses').insert({ month, label, amount, share });
+    if (error) throw error;
+    toast('Saved!');
+    setTimeout(() => nav('home'), 600);
+  } catch (e) {
+    console.error(e);
+    toast('Error: ' + (e.message || 'unknown'));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Expense';
+  }
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  const row = document.getElementById('row-' + id);
+  if (row) { row.style.opacity = '.4'; row.style.pointerEvents = 'none'; }
+  try {
+    const { error } = await db.from('expenses').delete().eq('id', id);
+    if (error) throw error;
+    loadHistory();
+  } catch (e) {
+    console.error(e);
+    toast('Error deleting: ' + (e.message || 'unknown'));
+    if (row) { row.style.opacity = ''; row.style.pointerEvents = ''; }
+  }
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const body = document.getElementById('hist-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
+  setFooter(null);
+
+  try {
+    const { data, error } = await db
+      .from('expenses').select('*').order('created_at', { ascending: true });
+    if (error) throw error;
+    renderHistory(data || []);
+  } catch (e) {
+    console.error(e);
+    body.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><p>Failed to load.<br>Check your connection.</p></div>';
+  }
+}
+
+function renderHistory(rows) {
+  const body = document.getElementById('hist-body');
+
+  if (!rows.length) {
+    body.innerHTML = '<div class="empty"><div class="empty-icon">💸</div><p>No expenses yet.<br>Tap + Add Expense to start.</p></div>';
+    setFooter(0);
+    return;
+  }
+
+  // Group by month
+  const groups = {};
+  rows.forEach(r => { (groups[r.month] ??= []).push(r); });
+
+  const monthsAsc = Object.keys(groups).sort();
+
+  // Carry-over = cumulative sum of all shares before this month
+  const carryOver = {};
+  let running = 0;
+  monthsAsc.forEach(m => {
+    carryOver[m] = running;
+    running += groups[m].reduce((s, r) => s + r.share, 0);
+  });
+
+  const total = rows.reduce((s, r) => s + r.share, 0);
+  setFooter(total);
+
+  let html = '';
+  [...monthsAsc].reverse().forEach(month => {
+    const exps      = groups[month];
+    const co        = carryOver[month];
+    const prevLabel = prevMonthName(month);
+
+    html += `<div class="month-block">`;
+    html += `<div class="month-label">${fmtMonth(month)}</div>`;
+    html += `
+      <div class="carryover-row">
+        <span class="carryover-lbl">↩ Carry-over from ${prevLabel}</span>
+        <span class="carryover-amt">${fmtSigned(co)}</span>
+      </div>`;
+
+    exps.forEach(r => {
+      const cls      = r.share >= 0 ? 'pos' : 'neg';
+      const fullLine = r.amount !== 0
+        ? `<div class="exp-full">${fmtSigned(r.amount)} total</div>` : '';
+      html += `
+        <div class="exp-row" id="row-${r.id}">
+          <div class="exp-name">${esc(r.label)}</div>
+          <div class="exp-right">
+            ${fullLine}
+            <div class="exp-share ${cls}">${fmtSigned(r.share)}</div>
+          </div>
+          <button class="del-btn" data-id="${r.id}" aria-label="Delete">🗑</button>
+        </div>`;
+    });
+    html += `</div>`;
+  });
+
+  body.innerHTML = html;
+}
+
+function setFooter(val) {
+  const el = document.getElementById('foot-total');
+  if (val === null) { el.textContent = '—'; el.className = 'foot-total'; return; }
+  el.textContent = fmtSigned(val);
+  el.className   = 'foot-total ' + (val >= 0 ? 'pos' : 'neg');
+}
+
+// ── Formatting ────────────────────────────────────────────────────────────────
+function fmtSigned(n) {
+  const sign = n < 0 ? '−' : '+';
+  return `${sign}$${Math.abs(n).toFixed(2)} CAD`;
+}
+
+function fmtMonth(m) {
+  const [y, mo] = m.split('-');
+  return new Date(+y, +mo - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function prevMonthName(m) {
+  const [y, mo] = m.split('-');
+  return new Date(+y, +mo - 2, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+// ── Wire up all events (no inline handlers) ───────────────────────────────────
+document.getElementById('btn-add')    .addEventListener('click', () => nav('add-expense'));
+document.getElementById('btn-history').addEventListener('click', () => nav('history'));
+document.getElementById('back-add')  .addEventListener('click', () => nav('home'));
+document.getElementById('back-hist') .addEventListener('click', () => nav('home'));
+document.getElementById('sign-btn')  .addEventListener('click', toggleSign);
+document.getElementById('save-btn')  .addEventListener('click', saveExpense);
+
+const amountEl = document.getElementById('f-amount');
+amountEl.addEventListener('input',  syncShare);
+amountEl.addEventListener('change', syncShare);
+amountEl.addEventListener('keyup',  syncShare);
+
+document.getElementById('f-share').addEventListener('input', () => { shareEdited = true; });
+
+// Event delegation for delete buttons rendered inside history
+document.getElementById('hist-body').addEventListener('click', e => {
+  const btn = e.target.closest('.del-btn');
+  if (btn) deleteExpense(Number(btn.dataset.id));
+});
+
+// ── Service Worker ────────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(console.warn);
+  });
+}
+</script>
+</body>
+</html>
