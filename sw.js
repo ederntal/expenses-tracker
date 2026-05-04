@@ -1,4 +1,4 @@
-const CACHE = 'split-tracker-v1';
+const CACHE = 'split-tracker-v2';
 const STATIC = [
   './',
   './index.html',
