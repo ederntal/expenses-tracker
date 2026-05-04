@@ -1,13 +1,11 @@
-const CACHE = 'split-tracker-v2';
-const STATIC = [
-  './',
-  './index.html',
+const CACHE = 'split-tracker-v3';
+const CDN_ASSETS = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'
 ];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(STATIC)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll(CDN_ASSETS)).then(() => self.skipWaiting())
   );
 });
 
@@ -22,21 +20,31 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = e.request.url;
 
-  // Network-first for Supabase API (live data when online, nothing when offline)
+  // Network-first: Supabase API (live data)
   if (url.includes('supabase.co')) {
     e.respondWith(fetch(e.request).catch(() => new Response('', { status: 503 })));
     return;
   }
 
-  // Cache-first for everything else (app shell + CDN assets)
+  // Network-first: HTML app shell — always get the latest version, fall back to cache offline
+  if (e.request.destination === 'document' || url.endsWith('.html') || url.endsWith('/')) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Cache-first: CDN assets (versioned by the CDN, safe to cache long-term)
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
       return fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
+        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         return res;
       });
     })
