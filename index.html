@@ -160,7 +160,6 @@
       padding: 14px 16px; margin-bottom: 6px;
       display: flex; align-items: center; gap: 10px;
     }
-    .exp-name  { font-size: 16px; font-weight: 500; flex: 1; }
     .exp-right { text-align: right; flex-shrink: 0; }
     .exp-full  { font-size: 13px; color: var(--text2); margin-bottom: 2px; }
     .exp-share { font-size: 16px; font-weight: 700; }
@@ -174,6 +173,51 @@
       opacity: .55; transition: opacity .15s, background .15s;
     }
     .del-btn:active { opacity: 1; background: rgba(255,69,58,.15); }
+
+    /* ── Expense row tap target ── */
+    .exp-row { cursor: pointer; transition: opacity .15s; }
+    .exp-row:active { opacity: .7; }
+    .exp-info { flex: 1; min-width: 0; }
+    .exp-name  { font-size: 16px; font-weight: 500; }
+    .exp-date  { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+    /* ── Edit bottom sheet ── */
+    .sheet-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.55);
+      z-index: 100; opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+    }
+    .sheet-backdrop.show { opacity: 1; pointer-events: all; }
+
+    .sheet {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface); border-radius: 20px 20px 0 0;
+      z-index: 101; max-height: 90vh; overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform .35s cubic-bezier(.32,0,.67,0);
+    }
+    .sheet.show { transform: translateY(0); transition: transform .35s cubic-bezier(.33,1,.68,1); }
+
+    .sheet-inner {
+      padding: 0 20px 20px;
+      padding-bottom: calc(20px + var(--sb));
+    }
+    .sheet-handle {
+      width: 36px; height: 4px; background: var(--border);
+      border-radius: 2px; margin: 12px auto 20px;
+    }
+    .sheet-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .sheet-title { font-size: 18px; font-weight: 700; }
+    .sheet-close {
+      width: 32px; height: 32px; border: none;
+      background: var(--surface2); border-radius: 50%;
+      color: var(--text2); font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .sheet-close:active { opacity: .7; }
 
     /* ── Footer ── */
     .sticky-foot {
@@ -280,6 +324,43 @@
   </div>
 </div>
 
+<!-- ── Edit Expense Sheet ── -->
+<div class="sheet-backdrop" id="edit-backdrop"></div>
+<div class="sheet" id="edit-sheet">
+  <div class="sheet-inner">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Edit Expense</span>
+      <button class="sheet-close" id="edit-close">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="e-name">Expense Name</label>
+      <input type="text" id="e-name" class="form-input"
+             autocomplete="off" autocorrect="off" autocapitalize="words">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Full Amount Paid (CAD)</label>
+      <div class="amount-row">
+        <button class="sign-toggle pos" id="e-sign-btn" type="button">+</button>
+        <div class="input-wrap">
+          <span class="input-prefix">$</span>
+          <input type="number" id="e-amount" class="form-input"
+                 inputmode="decimal" step="0.01" min="0">
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Your Share (CAD)</label>
+      <div class="input-wrap">
+        <span class="input-prefix">$</span>
+        <input type="number" id="e-share" class="form-input"
+               inputmode="decimal" step="0.01">
+      </div>
+    </div>
+    <button class="save-btn" id="edit-save-btn">Update Expense</button>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 // ── Supabase ──────────────────────────────────────────────────────────────────
@@ -293,8 +374,11 @@ try {
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let signNeg     = false;
-let shareEdited = false;
+let signNeg      = false;
+let shareEdited  = false;
+let editId       = null;
+let editSignNeg  = false;
+let expensesCache = [];
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function nav(id) {
@@ -396,6 +480,7 @@ async function loadHistory() {
 }
 
 function renderHistory(rows) {
+  expensesCache = rows;
   const body = document.getElementById('hist-body');
 
   if (!rows.length) {
@@ -440,8 +525,11 @@ function renderHistory(rows) {
       const fullLine = r.amount !== 0
         ? `<div class="exp-full">${fmtSigned(r.amount)} total</div>` : '';
       html += `
-        <div class="exp-row" id="row-${r.id}">
-          <div class="exp-name">${esc(r.label)}</div>
+        <div class="exp-row" id="row-${r.id}" data-id="${r.id}">
+          <div class="exp-info">
+            <div class="exp-name">${esc(r.label)}</div>
+            <div class="exp-date">${fmtDate(r.created_at)}</div>
+          </div>
           <div class="exp-right">
             ${fullLine}
             <div class="exp-share ${cls}">${fmtSigned(r.share)}</div>
@@ -478,8 +566,67 @@ function prevMonthName(m) {
   return new Date(+y, +mo - 2, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
+function fmtDate(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function esc(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Edit sheet ────────────────────────────────────────────────────────────────
+function showSheet(visible) {
+  document.getElementById('edit-backdrop').classList.toggle('show', visible);
+  document.getElementById('edit-sheet').classList.toggle('show', visible);
+}
+
+function openEdit(row) {
+  editId      = row.id;
+  editSignNeg = row.amount < 0;
+
+  document.getElementById('e-name').value   = row.label;
+  document.getElementById('e-amount').value = Math.abs(row.amount).toFixed(2);
+  document.getElementById('e-share').value  = row.share.toFixed(2);
+  renderEditSign();
+  showSheet(true);
+}
+
+function toggleEditSign() {
+  editSignNeg = !editSignNeg;
+  renderEditSign();
+}
+
+function renderEditSign() {
+  const btn = document.getElementById('e-sign-btn');
+  if (editSignNeg) { btn.textContent = '−'; btn.className = 'sign-toggle neg'; }
+  else             { btn.textContent = '+'; btn.className = 'sign-toggle pos'; }
+}
+
+async function saveEdit() {
+  const label = document.getElementById('e-name').value.trim();
+  const raw   = parseFloat(document.getElementById('e-amount').value) || 0;
+  const share = parseFloat(document.getElementById('e-share').value) || 0;
+
+  if (!label)                  { toast('Please enter an expense name'); return; }
+  if (raw === 0 && share === 0) { toast('Please enter an amount'); return; }
+
+  const amount = editSignNeg ? -raw : raw;
+  const btn = document.getElementById('edit-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  try {
+    const { error } = await db.from('expenses').update({ label, amount, share }).eq('id', editId);
+    if (error) throw error;
+    toast('Updated!');
+    showSheet(false);
+    loadHistory();
+  } catch (e) {
+    console.error(e);
+    toast('Error: ' + (e.message || 'unknown'));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Update Expense';
+  }
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -507,11 +654,24 @@ amountEl.addEventListener('keyup',  syncShare);
 
 document.getElementById('f-share').addEventListener('input', () => { shareEdited = true; });
 
-// Event delegation for delete buttons rendered inside history
+// Event delegation for history rows: delete or edit
 document.getElementById('hist-body').addEventListener('click', e => {
-  const btn = e.target.closest('.del-btn');
-  if (btn) deleteExpense(Number(btn.dataset.id));
+  const delBtn = e.target.closest('.del-btn');
+  if (delBtn) { deleteExpense(Number(delBtn.dataset.id)); return; }
+
+  const row = e.target.closest('.exp-row');
+  if (row) {
+    const id   = Number(row.dataset.id);
+    const data = expensesCache.find(r => r.id === id);
+    if (data) openEdit(data);
+  }
 });
+
+// Edit sheet controls
+document.getElementById('edit-close')   .addEventListener('click', () => showSheet(false));
+document.getElementById('edit-backdrop').addEventListener('click', () => showSheet(false));
+document.getElementById('e-sign-btn')   .addEventListener('click', toggleEditSign);
+document.getElementById('edit-save-btn').addEventListener('click', saveEdit);
 
 // ── Service Worker ────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
